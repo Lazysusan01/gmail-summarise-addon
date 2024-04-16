@@ -13,6 +13,7 @@ from botocore.config import Config
 import os
 from send_email import *
 from dotenv import load_dotenv
+import re
 
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly', 
           'https://www.googleapis.com/auth/gmail.send']
@@ -38,22 +39,23 @@ def get_gmail_service():
     service = build('gmail', 'v1', credentials=creds)
     return service
 
-def list_emails(service, user_id='me', query=''):
+def list_threads(service, user_id='me', query=''):
     try:
-        response = service.users().messages().list(userId=user_id, q=query).execute()
-        messages = response.get('messages', [])
+        response = service.users().threads().list(userId=user_id, q=query).execute()
+        threads = response.get('threads', [])
         
         # Handle pagination
         while 'nextPageToken' in response:
             page_token = response['nextPageToken']
-            response = service.users().messages().list(userId=user_id, q=query, pageToken=page_token).execute()
-            messages.extend(response.get('messages', []))
+            response = service.users().threads().list(userId=user_id, q=query, pageToken=page_token).execute()
+            threads.extend(response.get('threads', []))
         
-        return messages
+        return threads
     except Exception as error:
         print(f'An error occurred: {error}')
         return None
-     
+    
+
 def get_email_body(parts, mime_type='text/plain'):
     """
     Recursively search the email parts for the specified mime type and return the decoded content.
@@ -101,6 +103,15 @@ def get_email_details(service, user_id, email_id):
         print(f'An error occurred: {error}')
         return None
 
+def get_latest_email_from_thread(service, user_id, thread_id):
+    try:
+        thread = service.users().threads().get(userId=user_id, id=thread_id, format='full').execute()
+        # The latest message is the last one in the thread
+        latest_message = thread['messages'][-1]
+        return get_email_details(service, user_id, latest_message['id'])
+    except Exception as error:
+        print(f'An error occurred: {error}')
+        return None
 
 def filter_emails_by_keywords(email_details, keywords):
     # Filter emails where any keyword is found in the subject or body
@@ -112,23 +123,33 @@ def filter_emails_by_keywords(email_details, keywords):
     return filtered_emails
 
 def list_emails_and_details(service, query, user_id=email_address_to_search):
-    emails = list_emails(service, user_id=user_id, query=query)
-    if not emails:  # Check if emails is empty or None
-        return []  # Return an empty list if there are no emails to avoid errors in the next line
-    email_details = [get_email_details(service, user_id, email['id']) for email in emails]
+    threads = list_threads(service, user_id=user_id, query=query)
+    if not threads:  # Check if threads is empty or None
+        return []  # Return an empty list if there are no threads to avoid errors in the next line
+    email_details = [get_latest_email_from_thread(service, user_id, thread['id']) for thread in threads]
     return email_details
 
+def remove_urls(emails):
+    url_pattern = r'https?://\S+|www\.\S+'
+    unicode_pattern = r'\\u[0-9a-fA-F]+'
+    for email in emails:
+        email['body'] = re.sub(url_pattern, '', email['body'])
+        email['body'] = re.sub(unicode_pattern, '', email['body'])
+    return emails
 
-a_week_ago = datetime.datetime.now() - datetime.timedelta(days=14)
+a_week_ago = datetime.datetime.now() - datetime.timedelta(days=1)
 
 service = get_gmail_service()
 email_details = list_emails_and_details(service, query=f'after:{a_week_ago.strftime("%Y/%m/%d")}')
 # from:(mayumi@chemwatch.net OR richard.endsley@chemwatch.net)
 # filtered_emails = filter_emails_by_keywords(email_details, keywords)
 
+# cleaned_emails = remove_urls(email_details)
+cleaned_emails = email_details
+
 # Save to JSON file
-with open('email_details.json', 'w') as f:
-    json.dump(email_details, f, indent=4)
+with open('email_details.json', 'w') as f:    
+    json.dump(cleaned_emails, f, indent=4)
 
 print("Email details saved to 'email_details.json'")
 
@@ -140,6 +161,9 @@ print("Email details saved to 'email_details.json'")
 with open('email_details.json') as f:
     email_details = json.load(f)
     
+print(f"Total emails: {len(email_details)}")    
+print(f"Estimated tokens: {len(str(email_details))/6}")
+
 print(email_details[0])
 
 # load_dotenv('.env')
@@ -150,6 +174,9 @@ print(email_details[0])
 # region = 'us-east-1'
 
 # Get AWS region from the config file
+
+
+
 load_dotenv('.env')
 
 aws_access_key=os.getenv('aws_access_key_id')
@@ -172,7 +199,14 @@ completion = client.messages.create(
     model="anthropic.claude-3-sonnet-20240229-v1:0",
     max_tokens=1024,
     messages=[
-         {'role': 'user', 'content' : f"Hi Claude, i'd like you to provide a summary of the following emails, you should decide which emails are the most important, if they are direct requests, important updates/news, or ignore them if they don't seem important to you. Emails: {email_details}"}
+         {'role': 'user', 'content' : f"""Hi Claude, i'd like you to provide a summary of the following emails,
+          you should decide which emails are the most important, if they are direct requests, important updates/news, or ignore them if they don't seem important to you.
+          Please provide the HTML format for an email summary. Use placeholders '(message_summary)' for the text summary and '(message_id)' for the hyperlink URL.
+          The output should look like this:
+            <p>(message_summary)</p>
+            <a href='https://mail.google.com/mail/u/0/#inbox/(message_id)'>Link</a> \n.
+             
+            Email data: {email_details}"""}
         ]
 )
 
@@ -180,5 +214,6 @@ output = completion.content[0].text
 print(output)
 
 service = get_gmail_service()  # Ensure you have this function from your Gmail API setup
-email_content = create_message("nico@chemwatch.net", "nico@chemwatch.net", f'Summary of emails since {a_week_ago.strftime("%Y/%m/%d")}', f"Hi there, \n here is a summary of emails sent in the past 2 weeks \n {output}")
+email_content = create_message("nico@chemwatch.net", "nico@chemwatch.net", f'Summary of emails since {a_week_ago.strftime("%Y/%m/%d")}', f"Hi there, \n {output}")
 send_message(service, 'me', email_content)
+
