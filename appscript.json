@@ -1,0 +1,38 @@
+{
+    "timeZone": "Australia/Sydney",
+    "exceptionLogging": "STACKDRIVER",
+    "runtimeVersion": "V8",
+    "oauthScopes": [
+      "https://www.googleapis.com/auth/gmail.addons.execute",
+      "https://www.googleapis.com/auth/gmail.send",
+      "https://www.googleapis.com/auth/gmail.readonly",
+      "https://www.googleapis.com/auth/userinfo.email",
+      "https://www.googleapis.com/auth/gmail.addons.current.action.compose",
+      "https://www.googleapis.com/auth/script.external_request"
+    ],
+    "urlFetchWhitelist": [
+      "https://fkw6d1sbee.execute-api.us-east-1.amazonaws.com/default/gmail_summarise_addon"
+    ],
+    "addOns": {
+      "common": {
+        "name": "Nico's Email Summarizer",
+        "logoUrl": "https://cdn0.iconfinder.com/data/icons/email-set-2-1/64/x-05-512.png",
+        "layoutProperties": {
+          "primaryColor": "#2766B3",
+          "secondaryColor": "#EFEFEF"
+        },
+        "homepageTrigger": {
+          "runFunction": "onGmailPage",
+          "enabled": true
+        }
+      },
+      "gmail": {
+        "contextualTriggers": [
+          {
+            "unconditional": {},
+            "onTriggerFunction": "onGmailPage"
+          }
+        ]
+      }
+    }
+  }
