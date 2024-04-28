@@ -36,7 +36,7 @@ function onGmailPage() {
 }
 
 function sendToLambdaAsync(payload) {
-    var url = 'https://fkw6d1sbee.execute-api.us-east-1.amazonaws.com/default/gmail_summarise_addon';
+    var url = 'LAMBDA_URL';
     var options = {
         method: 'post',
         contentType: 'application/json',
@@ -80,7 +80,7 @@ function handleSubmit(e) {
   return createProcessingCard();
   console.log(payload)
 }  
-//   var response = UrlFetchApp.fetch('https://fkw6d1sbee.execute-api.us-east-1.amazonaws.com/default/gmail_summarise_addon', {
+//   var response = UrlFetchApp.fetch('LAMBDA_URL', {
 //     method: 'post',
 //     contentType: 'application/json',
 //     payload: payload,

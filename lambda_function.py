@@ -11,10 +11,6 @@ from dotenv import load_dotenv
 import os
 import re
 
-email_address_to_search = 'me'
-
-keywords = ['proposal', 'contract', 'quotes', 'events', 'tradeshows', 'negotiations', 'negotiation']
-
 def get_gmail_service(access_token):
     creds = Credentials(token=access_token)
     service = build('gmail', 'v1', credentials=creds)
@@ -97,7 +93,7 @@ def filter_emails_by_keywords(email_details, keywords):
     ]
     return filtered_emails
 
-def list_emails_and_details(service, query, user_id=email_address_to_search):
+def list_emails_and_details(service, query, user_id='me'):
     emails = list_emails(service, user_id=user_id, query=query)
     if not emails:  # Check if emails is empty or None
         return []  # Return an empty list if there are no emails to avoid errors in the next line
@@ -172,9 +168,27 @@ def process_data(start_date, end_date, access_token):
         email_details = list_emails_and_details(service, query=query)
         filtered_emails = remove_urls(email_details)
 
+        # Save to xml file
+        with open('/tmp/filtered_email_details.xml', 'w') as f:
+            f.write('<emails>\n')
+            for email in filtered_emails:
+                f.write(f'<email>\n')
+                f.write(f'<id>{email["id"]}</id>\n')
+                f.write(f'<from>{email.get("from", "")}</from>\n')
+                f.write(f'<to>{email.get("to", "")}</to>\n')
+                f.write(f'<cc>{email.get("cc", "")}</cc>\n')
+                f.write(f'<subject>{email.get("subject", "")}</subject>\n')
+                f.write(f'<body>{email.get("body", "")}</body>\n')
+                f.write(f'</email>\n')
+            f.write('</emails>\n')
+
+        print("Email details saved to 'filtered_email_details.xml'")
+
+
         # Save to JSON file
         with open('/tmp/filtered_email_details.json', 'w') as f:
             json.dump(filtered_emails, f, indent=4)
+
 
         print("Email details saved to 'filtered_email_details.json'")
         print(f"Total emails: {len(filtered_emails)}")
